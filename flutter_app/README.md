@@ -1,8 +1,8 @@
-# Aura Mind Mobile
+# AuraMind Mobile
 
-Aplicativo Flutter para o ecossistema Aura Mind, com integração para autenticação, sincronização com Supabase, backend de IA e recursos de automação.
+Aplicativo Flutter para o ecossistema AuraMind, com integração para autenticação, sincronização com Supabase, backend de IA e recursos de automação.
 
-## Visão geral
+## Visão Geral
 
 O projeto inclui:
 
@@ -12,34 +12,34 @@ O projeto inclui:
 - integração com dispositivos e automações;
 - interface mobile pensada para uso diário.
 
-## Stack principal
+## Stack Principal
 
-- Flutter
-- Dart
-- Supabase
-- REST APIs
-- Material Design
+- Flutter;
+- Dart;
+- Supabase;
+- REST APIs;
+- Material Design.
 
-## Estrutura do projeto
+## Estrutura do Projeto
 
-- `lib/` — código principal do app
-- `lib/core/` — configuração, tema, rede e utilidades
-- `lib/features/` — regras de negócio e repositórios
-- `lib/screens/` — telas e navegação
-- `lib/services/` — integrações nativas e serviços externos
-- `lib/state/` — estado global da aplicação
-- `supabase/` — schema SQL para o banco
-- `test/` — testes automatizados
+- `lib/` — código principal do app;
+- `lib/core/` — configuração, tema, rede e utilidades;
+- `lib/features/` — regras de negócio e repositórios;
+- `lib/screens/` — telas e navegação;
+- `lib/services/` — integrações nativas e serviços externos;
+- `lib/state/` — estado global da aplicação;
+- `supabase/` — schema SQL para o banco;
+- `test/` — testes automatizados.
 
 ## Requisitos
 
-- Flutter SDK
-- Android Studio ou VS Code com extensão Flutter
-- Emulador Android ou dispositivo físico
-- Projeto Supabase configurado
-- Backend com URL HTTPS válida
+- Flutter SDK;
+- Android Studio ou VS Code com extensão Flutter;
+- emulador Android ou dispositivo físico;
+- projeto Supabase configurado;
+- backend com URL HTTPS válida.
 
-## Configuração do app
+## Configuração do App
 
 Para desenvolvimento local, o app pode receber as variáveis abaixo em tempo de build:
 
@@ -51,24 +51,22 @@ Exemplo:
 
 ```powershell
 flutter run `
-  --dart-define=ORACLE_API_BASE_URL=https://seu-backend.ngrok-free.dev `
+  --dart-define=ORACLE_API_BASE_URL=https://seu-backend `
   --dart-define=SUPABASE_URL=https://seu-projeto.supabase.co `
   --dart-define=SUPABASE_ANON_KEY=sua-chave-publicavel
 ```
 
-Para a versão final distribuída aos usuários, o app já foi preparado para usar valores embutidos na build, evitando a necessidade do usuário executar comandos com `--dart-define`.
+Para a versão final distribuída aos usuários, o app já foi preparado para usar valores embutidos na build, evitando a necessidade de o usuário executar comandos com `--dart-define`.
 
-> Em produção, valores sensíveis devem continuar sendo tratados com secrets ou pipeline de build.
+## Como Rodar
 
-## Como rodar
-
-### Android emulator
+### Android Emulator
 
 ```powershell
 flutter run
 ```
 
-### Dispositivo físico
+### Dispositivo Físico
 
 ```powershell
 flutter run --device-id=<seu-dispositivo>
@@ -115,12 +113,12 @@ flutter test
 flutter analyze
 ```
 
-## Release notes
+## Release Notes
 
-- O app aceita configuração por build-time values.
-- O backend deve estar acessível por HTTPS.
-- A autenticação depende corretamente da URL e da chave Supabase.
-- A build de release já foi validada com APK pronto para uso.
+- o app aceita configuração por build-time values;
+- o backend deve estar acessível por HTTPS;
+- a autenticação depende corretamente da URL e da chave Supabase;
+- a build de release já foi validada com APK pronto para uso.
 
 ## Contribuição
 

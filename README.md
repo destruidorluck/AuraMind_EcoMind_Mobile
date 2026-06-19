@@ -1,49 +1,88 @@
 
-# Aura Mind Project
+# AuraMind
 
-Este workspace reúne os principais componentes do ecossistema Aura Mind:
+### IA conversacional, automação residencial e experiência multimodal em um único ecossistema mobile
 
-- **Aplicativo mobile** em [flutter_app](flutter_app)
-- **Site/web** na raiz do projeto
-- **Documentação e referências** em [guidelines](guidelines)
+<p align="center">
+  <a href="./README.md">Início</a> |
+  <a href="./flutter_app/README.md">Flutter App</a> |
+  <a href="./guidelines/Guidelines.md">Docs</a>
+</p>
 
-## Visão geral
+<p align="center">
+  <img src="https://img.shields.io/badge/Flutter-Mobile-0B1020?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter" />
+  <img src="https://img.shields.io/badge/Dart-Language-111827?style=for-the-badge&logo=dart&logoColor=00D9FF" alt="Dart" />
+  <img src="https://img.shields.io/badge/Supabase-Auth%20%26%20Data-062B2B?style=for-the-badge&logo=supabase&logoColor=3ECF8E" alt="Supabase" />
+  <img src="https://img.shields.io/badge/API-Backend-4B0082?style=for-the-badge&logo=fastapi&logoColor=white" alt="Backend API" />
+</p>
 
-O repositório foi organizado para manter:
+> AuraMind combina voz, texto, automação e feedback contextual para reduzir fricção cognitiva e deixar a rotina mais fluida.
 
-- o app Flutter com configuração pronta para build de release;
-- a interface web do projeto;
-- a documentação necessária para publicação e manutenção.
+## Visão Geral
 
-## Estrutura do projeto
+Este repositório é focado exclusivamente no aplicativo mobile Flutter do projeto AuraMind.
 
-- [flutter_app](flutter_app) — aplicativo mobile Flutter
-- [src](src) — frontend web
-- [public](public) — assets públicos do site
-- [guidelines](guidelines) — documentos de apoio e referência
+- interface mobile com experiência multimodal;
+- autenticação e sincronização com Supabase;
+- integração com backend via HTTPS;
+- build pronta para APK de release.
 
-## Objetivo
+## Estrutura do Repositório
 
-Acompanhar o desenvolvimento do ecossistema Aura Mind com:
+- [flutter_app](flutter_app) — app Flutter principal;
+- [guidelines](guidelines) — referências técnicas e documentação de apoio;
+- [README.md](README.md) — visão geral do projeto.
 
-- experiência mobile inteligente;
-- integração com backend e Supabase;
-- navegação visual do site;
-- documentação clara para publicação em GitHub.
+## Arquitetura Rápida
 
-## Documentação por área
+```text
+flutter_app/
+├── lib/               # código principal do app
+├── assets/            # imagens, sons e recursos
+├── supabase/          # schema SQL de apoio
+└── test/              # testes automatizados
+```
 
-- O README do app explica instalação, execução, build e distribuição.
-- O README do site explica como visualizar e manter a interface web.
-- Variáveis sensíveis devem permanecer fora do código público e serem tratadas via build pipeline ou secrets.
+## Como Rodar
 
-## Build e release
+### 1. Pré-requisitos
 
-- O aplicativo mobile pode gerar um APK de release com o comando:
-  - `flutter build apk`
-- O arquivo final esperado está em:
-  - [flutter_app/build/app/outputs/flutter-apk/app-release.apk](flutter_app/build/app/outputs/flutter-apk/app-release.apk)
+- Flutter SDK instalado;
+- Android Studio ou VS Code com extensão Flutter;
+- emulador Android ou dispositivo físico.
 
-## Próximo passo
+### 2. Configuração local
 
-Após finalizar a documentação, o próximo passo é configurar os remotes do GitHub e publicar os repositórios conforme a estratégia definida.
+O app utiliza valores de configuração em tempo de build para conectar com o backend e com o Supabase.
+
+Exemplo:
+
+```powershell
+flutter run `
+  --dart-define=ORACLE_API_BASE_URL=https://seu-backend `
+  --dart-define=SUPABASE_URL=https://seu-projeto.supabase.co `
+  --dart-define=SUPABASE_ANON_KEY=sua-chave-publicavel
+```
+
+### 3. Build do APK
+
+```powershell
+flutter build apk
+```
+
+O artefato final será gerado em:
+
+- [flutter_app/build/app/outputs/flutter-apk/app-release.apk](flutter_app/build/app/outputs/flutter-apk/app-release.apk)
+
+## Configuração
+
+A versão final do app já foi preparada para trabalhar com valores embutidos na build, evitando que o usuário precise executar comandos manuais com `--dart-define`.
+
+## Documentação
+
+- [flutter_app/README.md](flutter_app/README.md) — instruções detalhadas do app;
+- [guidelines/Guidelines.md](guidelines/Guidelines.md) — referências técnicas e fluxo de desenvolvimento.
+
+## Observação Importante
+
+Esta versão do projeto foi organizada exclusivamente para o aplicativo Flutter. A parte React foi removida da documentação para manter o repositório alinhado com o produto final mobile.
