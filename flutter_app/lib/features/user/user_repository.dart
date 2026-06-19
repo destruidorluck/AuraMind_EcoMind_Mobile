@@ -45,11 +45,19 @@ class UserRepository {
           .eq('id', user.id)
           .maybeSingle();
     } catch (_) {
-      response = await supabase
-          .from('profiles')
-          .select('id, email, name, full_name, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
+      try {
+        response = await supabase
+            .from('profiles')
+            .select('id, email, name, avatar_url, avatar_path')
+            .eq('id', user.id)
+            .maybeSingle();
+      } catch (_) {
+        response = await supabase
+            .from('profiles')
+            .select('id, email, name, avatar_url')
+            .eq('id', user.id)
+            .maybeSingle();
+      }
     }
 
     if (response == null) {
@@ -71,7 +79,9 @@ class UserRepository {
         .toString()
         .trim();
     final avatarPath = (data['avatar_path'] ?? '').toString().trim();
-    var avatarUrl = (data['avatar_url'] ?? '').toString();
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
+    var avatarUrl = (data['avatar_url'] ?? metadata['avatar_url'] ?? '')
+        .toString();
     if (avatarPath.isNotEmpty) {
       try {
         avatarUrl = await supabase.storage
@@ -106,18 +116,6 @@ class UserRepository {
       final path = '$userId/profile/avatar.$safeExtension';
       final upload = await _uploadPhoto(path: path, file: file);
       if (upload == null) return UploadedPhoto(url: file.path, path: '');
-      try {
-        await supabase.from('profiles').upsert({
-          'id': userId,
-          'avatar_path': upload.path,
-          'avatar_url': upload.url,
-        });
-      } catch (_) {
-        await supabase.from('profiles').upsert({
-          'id': userId,
-          'avatar_url': upload.url,
-        });
-      }
       return upload;
     } catch (_) {
       return UploadedPhoto(url: file.path, path: '');
@@ -164,7 +162,7 @@ class UserRepository {
     }
   }
 
-  Future<void> saveProfile({
+  Future<bool> saveProfile({
     required String userId,
     required String name,
     required String email,
@@ -172,7 +170,7 @@ class UserRepository {
     String? avatarPath,
   }) async {
     final supabase = _client;
-    if (supabase == null || userId.isEmpty) return;
+    if (supabase == null || userId.isEmpty) return false;
     final payload = <String, dynamic>{
       'id': userId,
       'name': name.trim(),
@@ -184,15 +182,54 @@ class UserRepository {
     };
     try {
       await supabase.from('profiles').upsert(payload);
+      await _syncAuthAvatarMetadata(
+        supabase,
+        avatarUrl: avatarUrl,
+        avatarPath: avatarPath,
+      );
+      return true;
     } catch (_) {
       try {
         final fallback = Map<String, dynamic>.from(payload)
-          ..remove('avatar_path');
+          ..remove('avatar_path')
+          ..remove('full_name');
         await supabase.from('profiles').upsert(fallback);
+        await _syncAuthAvatarMetadata(
+          supabase,
+          avatarUrl: avatarUrl,
+          avatarPath: avatarPath,
+        );
+        return true;
       } catch (_) {
-        // Local profile state remains available when Supabase is offline.
+        return false;
       }
     }
+  }
+
+  Future<void> _syncAuthAvatarMetadata(
+    SupabaseClient supabase, {
+    String? avatarUrl,
+    String? avatarPath,
+  }) async {
+    if (avatarUrl?.trim().isNotEmpty != true &&
+        avatarPath?.trim().isNotEmpty != true) {
+      return;
+    }
+    try {
+      final current =
+          supabase.auth.currentUser?.userMetadata ?? const <String, dynamic>{};
+      await supabase.auth.updateUser(
+        UserAttributes(
+          data: {
+            ...current,
+            if (avatarUrl?.trim().isNotEmpty == true)
+              'avatar_url': avatarUrl!.trim(),
+            if (avatarPath?.trim().isNotEmpty == true)
+              'avatar_path': avatarPath!.trim(),
+          },
+        ),
+      );
+    } catch (_) {}
   }
 
   String _contentTypeFor(String extension) {

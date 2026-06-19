@@ -9,11 +9,8 @@ import '../../widgets/aura_animated_light.dart';
 import '../../widgets/aura_primary_button.dart';
 import '../../widgets/aura_text_field.dart';
 
-typedef AuraLoginCallback = void Function({
-  String email,
-  String provider,
-  String name,
-});
+typedef AuraLoginCallback =
+    void Function({String email, String provider, String name});
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onLogin});
@@ -60,12 +57,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final message = await AuraAuthService.signInWithEmail(email, password);
       setState(() => _feedback = message);
-      final user = AuraAuthService.client?.auth.currentUser;
-      widget.onLogin(
-        email: email,
-        provider: 'E-mail',
-        name: user == null ? '' : AuraAuthService.displayNameFromUser(user),
-      );
+      if (!AuraAuthService.isConfigured) {
+        widget.onLogin(email: email, provider: 'E-mail');
+      }
     } catch (error) {
       setState(() => _feedback = '${context.tr('error')}: $error');
     } finally {
@@ -113,7 +107,9 @@ class _LoginScreenState extends State<LoginScreen> {
         widget.onLogin(provider: _providerLabel(provider));
       }
     } catch (error) {
-      setState(() => _feedback = '${context.tr('login_social_unavailable')}$error');
+      setState(
+        () => _feedback = '${context.tr('login_social_unavailable')}$error',
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -190,7 +186,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         context.tr('welcome_title'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: isDark ? AuraColors.white : const Color(0xFF0F172A),
+                          color: isDark
+                              ? AuraColors.white
+                              : const Color(0xFF0F172A),
                           fontSize: compact ? 34 : 44,
                           fontWeight: FontWeight.w900,
                         ),
@@ -200,7 +198,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         context.tr('welcome_subtitle'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: isDark ? AuraColors.zinc400 : const Color(0xFF64748B),
+                          color: isDark
+                              ? AuraColors.zinc400
+                              : const Color(0xFF64748B),
                           fontSize: 18,
                           fontWeight: FontWeight.w500,
                         ),
@@ -208,7 +208,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       SizedBox(height: compact ? 18 : AuraSpacing.xl),
                     ],
                     if (!AuraAuthService.isConfigured) ...[
-                      _FeedbackCard(text: context.tr('supabase_not_configured')),
+                      _FeedbackCard(
+                        text: context.tr('supabase_not_configured'),
+                      ),
                       const SizedBox(height: 14),
                     ],
                     AuraTextField(
@@ -223,7 +225,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       obscureText: !_showPassword,
                       controller: _passwordController,
                       suffix: IconButton(
-                        onPressed: () => setState(() => _showPassword = !_showPassword),
+                        onPressed: () =>
+                            setState(() => _showPassword = !_showPassword),
                         icon: Icon(
                           _showPassword
                               ? Icons.visibility_off_rounded
@@ -240,7 +243,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     _TermsRow(
                       accepted: _acceptedTerms,
-                      onChanged: (value) => setState(() => _acceptedTerms = value),
+                      onChanged: (value) =>
+                          setState(() => _acceptedTerms = value),
                       onTerms: () => _showLegal(
                         context.tr('terms'),
                         context.tr('terms_text'),
@@ -262,7 +266,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       context.tr('or_continue_with'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: isDark ? AuraColors.zinc500 : const Color(0xFF64748B),
+                        color: isDark
+                            ? AuraColors.zinc500
+                            : const Color(0xFF64748B),
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0,
@@ -295,7 +301,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               : () => _social(AuraAuthProvider.apple),
                           child: Icon(
                             Icons.apple_rounded,
-                            color: isDark ? AuraColors.white : const Color(0xFF111827),
+                            color: isDark
+                                ? AuraColors.white
+                                : const Color(0xFF111827),
                           ),
                         ),
                       ],
@@ -314,7 +322,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   vertical: compact ? 16 : 28,
                 ),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight - 32),
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - 32,
+                  ),
                   child: isWide
                       ? Row(
                           children: [
@@ -323,7 +333,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const AuraAnimatedLight(size: 260, logoSize: 170),
+                                  const AuraAnimatedLight(
+                                    size: 260,
+                                    logoSize: 170,
+                                  ),
                                   const SizedBox(height: 28),
                                   Text(
                                     context.tr('welcome_title'),

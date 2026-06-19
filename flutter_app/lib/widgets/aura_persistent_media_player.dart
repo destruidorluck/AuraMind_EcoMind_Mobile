@@ -41,48 +41,17 @@ class AuraMediaPlayerScope extends InheritedWidget {
   }
 }
 
-class _AuraYoutubePlayerScope extends InheritedWidget {
-  const _AuraYoutubePlayerScope({
-    required this.youtubeController,
-    required super.child,
-  });
-
-  final YoutubePlayerController? youtubeController;
-
-  static YoutubePlayerController? maybeOf(BuildContext context) {
-    return context
-        .dependOnInheritedWidgetOfExactType<_AuraYoutubePlayerScope>()
-        ?.youtubeController;
-  }
-
-  @override
-  bool updateShouldNotify(_AuraYoutubePlayerScope oldWidget) =>
-      youtubeController != oldWidget.youtubeController;
-}
-
-class AuraYoutubePlayerSurface extends StatelessWidget {
-  const AuraYoutubePlayerSurface({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _AuraYoutubePlayerScope.maybeOf(context);
-    if (controller == null) return const SizedBox.shrink();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AuraRadii.xl),
-      child: YoutubePlayer(controller: controller, aspectRatio: 16 / 9),
-    );
-  }
-}
-
 class AuraPersistentMediaPlayer extends StatefulWidget {
   const AuraPersistentMediaPlayer({
     super.key,
     required this.controller,
     required this.child,
+    this.enableYoutubePlayer = true,
   });
 
   final AuraController controller;
   final Widget child;
+  final bool enableYoutubePlayer;
 
   @override
   State<AuraPersistentMediaPlayer> createState() =>
@@ -96,7 +65,9 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
   StreamSubscription<YoutubePlayerValue>? _youtubeSubscription;
   Timer? _youtubeProgressTimer;
   String _loadedYoutubeVideoId = '';
+  String _observedYoutubeVideoId = '';
   Duration _lastRequestedYoutubePosition = Duration.zero;
+  bool _retriedInvalidParam = false;
 
   @override
   void initState() {
@@ -106,6 +77,9 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
       pause: _pause,
       toggle: _toggle,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_syncYoutubeWithMedia());
+    });
   }
 
   YoutubePlayerController _ensureYoutubeController() {
@@ -113,8 +87,8 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
     if (existing != null) return existing;
     final controller = YoutubePlayerController(
       params: const YoutubePlayerParams(
-        showControls: true,
-        showFullscreenButton: true,
+        showControls: false,
+        showFullscreenButton: false,
         enableCaption: false,
         interfaceLanguage: 'pt',
         playsInline: true,
@@ -132,7 +106,9 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
   @override
   void didUpdateWidget(covariant AuraPersistentMediaPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    unawaited(_syncYoutubeWithMedia());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_syncYoutubeWithMedia());
+    });
   }
 
   @override
@@ -144,9 +120,18 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
   }
 
   void _onYoutubeValue(YoutubePlayerValue value) {
-    final currentId = widget.controller.currentMedia.videoId.trim();
+    final currentId = _youtubeVideoId;
     if (currentId.isEmpty || currentId != _loadedYoutubeVideoId) return;
     if (value.hasError) {
+      if (value.error.name == 'invalidParam' && !_retriedInvalidParam) {
+        _retriedInvalidParam = true;
+        _loadedYoutubeVideoId = '';
+        Future<void>.delayed(
+          const Duration(milliseconds: 250),
+          () => _syncYoutubeWithMedia(force: true),
+        );
+        return;
+      }
       widget.controller.syncExternalMusicPlayback(
         playing: false,
         error:
@@ -162,9 +147,7 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
         widget.controller.currentMedia.isPlaying) {
       widget.controller.syncExternalMusicPlayback(
         playing: false,
-        position: value.playerState == PlayerState.ended
-            ? Duration.zero
-            : null,
+        position: value.playerState == PlayerState.ended ? Duration.zero : null,
       );
     }
   }
@@ -172,7 +155,7 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
   Future<void> _syncYoutubeProgress() async {
     final media = widget.controller.currentMedia;
     if (_loadedYoutubeVideoId.isEmpty ||
-        media.videoId.trim() != _loadedYoutubeVideoId ||
+        _youtubeVideoId != _loadedYoutubeVideoId ||
         !media.isPlaying) {
       return;
     }
@@ -195,8 +178,9 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
   }
 
   Future<void> _syncYoutubeWithMedia({bool force = false}) async {
+    if (!widget.enableYoutubePlayer) return;
     final media = widget.controller.currentMedia;
-    final videoId = media.videoId.trim();
+    final videoId = _youtubeVideoId;
     final existingController = _youtubeController;
     if (videoId.isEmpty) {
       if (_loadedYoutubeVideoId.isNotEmpty && existingController != null) {
@@ -205,24 +189,23 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
       }
       return;
     }
-    if (existingController == null &&
-        widget.controller.route.mainRoute != AuraRoute.play) {
-      return;
-    }
     final controller = existingController ?? _ensureYoutubeController();
     final position = media.position;
     if (force || _loadedYoutubeVideoId != videoId) {
       _loadedYoutubeVideoId = videoId;
       _lastRequestedYoutubePosition = position;
+      final startSeconds = position > Duration.zero
+          ? position.inMilliseconds / 1000
+          : null;
       if (media.isPlaying) {
         await controller.loadVideoById(
           videoId: videoId,
-          startSeconds: position.inSeconds.toDouble(),
+          startSeconds: startSeconds,
         );
       } else {
         await controller.cueVideoById(
           videoId: videoId,
-          startSeconds: position.inSeconds.toDouble(),
+          startSeconds: startSeconds,
         );
       }
       return;
@@ -244,7 +227,14 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
 
   Future<void> _play() async {
     try {
-      if (widget.controller.currentMedia.videoId.trim().isNotEmpty) {
+      if (widget.controller.currentMedia.hasPlayableVideo) {
+        final videoId = _youtubeVideoId;
+        if (videoId.isEmpty) {
+          widget.controller.markMusicPlaybackError(
+            'O link do YouTube desta musica e invalido.',
+          );
+          return;
+        }
         final controller = _ensureYoutubeController();
         await widget.controller.resumeMusicPlayback();
         await _syncYoutubeWithMedia(force: _loadedYoutubeVideoId.isEmpty);
@@ -261,7 +251,7 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
 
   Future<void> _pause() async {
     try {
-      if (widget.controller.currentMedia.videoId.trim().isNotEmpty) {
+      if (_youtubeVideoId.isNotEmpty) {
         await _youtubeController?.pauseVideo();
       }
       await widget.controller.pauseMusicPlayback();
@@ -280,6 +270,33 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
     }
   }
 
+  String get _youtubeVideoId {
+    final media = widget.controller.currentMedia;
+    final direct = media.videoId.trim();
+    if (_isValidYoutubeVideoId(direct)) return direct;
+    final uri = Uri.tryParse(media.youtubeUrl.trim());
+    if (uri == null) return '';
+    final queryId = uri.queryParameters['v']?.trim() ?? '';
+    if (_isValidYoutubeVideoId(queryId)) return queryId;
+    final segments = uri.pathSegments;
+    if (uri.host.contains('youtu.be') && segments.isNotEmpty) {
+      final candidate = segments.first.trim();
+      if (_isValidYoutubeVideoId(candidate)) return candidate;
+    }
+    for (final marker in const ['embed', 'shorts', 'live']) {
+      final index = segments.indexOf(marker);
+      if (index >= 0 && segments.length > index + 1) {
+        final candidate = segments[index + 1].trim();
+        if (_isValidYoutubeVideoId(candidate)) return candidate;
+      }
+    }
+    return '';
+  }
+
+  bool _isValidYoutubeVideoId(String value) {
+    return RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = widget.controller.currentMedia;
@@ -292,49 +309,71 @@ class _AuraPersistentMediaPlayerState extends State<AuraPersistentMediaPlayer> {
     final bottom = isMobile ? 96.0 : 18.0;
     final isMediaRoute = widget.controller.route.mainRoute == AuraRoute.play;
     final isHomeRoute = widget.controller.route.mainRoute == AuraRoute.home;
-    if (isMediaRoute && media.videoId.trim().isNotEmpty) {
+    final youtubeVideoId = _youtubeVideoId;
+    if (_observedYoutubeVideoId != youtubeVideoId) {
+      _observedYoutubeVideoId = youtubeVideoId;
+      _retriedInvalidParam = false;
+    }
+    if (widget.enableYoutubePlayer && youtubeVideoId.isNotEmpty) {
       _ensureYoutubeController();
     }
 
-    return _AuraYoutubePlayerScope(
-      youtubeController: _youtubeController,
-      child: AuraMediaPlayerScope(
-        controls: _controls,
-        child: Stack(
-          children: [
-            widget.child,
-            if (shouldShowMini && !isMediaRoute && !isHomeRoute)
-              Positioned(
-                left: isMobile ? 12 : null,
-                right: 12,
-                bottom: bottom,
-                width: isMobile ? null : 360,
-                child: Dismissible(
-                  key: ValueKey(
-                    'mini-player-${media.id}-${media.title}-${media.videoId}',
-                  ),
-                  direction: DismissDirection.horizontal,
-                  onDismissed: (_) {
-                    setState(
-                      () => _dismissedVideoId = media.id.trim().isNotEmpty
-                          ? media.id.trim()
-                          : media.title,
-                    );
-                  },
-                  child: _MiniMediaPlayer(
-                    title: media.title,
-                    artist: media.artist,
-                    imageUrl: media.imageUrl,
-                    videoId: media.videoId,
-                    playing: media.isPlaying,
-                    prominent: isMediaRoute,
-                    onTap: () => widget.controller.go(AuraRoute.play),
-                    onToggle: _toggle,
+    return AuraMediaPlayerScope(
+      controls: _controls,
+      child: Stack(
+        children: [
+          if (widget.enableYoutubePlayer &&
+              youtubeVideoId.isNotEmpty &&
+              _youtubeController != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              width: 360,
+              height: 203,
+              child: IgnorePointer(
+                child: ExcludeSemantics(
+                  child: Opacity(
+                    opacity: 0.01,
+                    child: YoutubePlayer(
+                      controller: _youtubeController!,
+                      aspectRatio: 16 / 9,
+                    ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+          widget.child,
+          if (shouldShowMini && !isMediaRoute && !isHomeRoute)
+            Positioned(
+              left: isMobile ? 12 : null,
+              right: 12,
+              bottom: bottom,
+              width: isMobile ? null : 360,
+              child: Dismissible(
+                key: ValueKey(
+                  'mini-player-${media.id}-${media.title}-${media.videoId}',
+                ),
+                direction: DismissDirection.horizontal,
+                onDismissed: (_) {
+                  setState(
+                    () => _dismissedVideoId = media.id.trim().isNotEmpty
+                        ? media.id.trim()
+                        : media.title,
+                  );
+                },
+                child: _MiniMediaPlayer(
+                  title: media.title,
+                  artist: media.artist,
+                  imageUrl: media.imageUrl,
+                  videoId: youtubeVideoId,
+                  playing: media.isPlaying,
+                  prominent: isMediaRoute,
+                  onTap: () => widget.controller.go(AuraRoute.play),
+                  onToggle: _toggle,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

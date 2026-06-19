@@ -42,7 +42,10 @@ class AuraAppDataRepository {
 
   SupabaseClient? get _client => AuraAuthService.client;
 
-  Future<AuraAppDataBundle> load(String userId) async {
+  Future<AuraAppDataBundle> load(
+    String userId, {
+    String ownerEmail = '',
+  }) async {
     return AuraAppDataBundle(
       lists: await _loadRows(
         userId,
@@ -69,7 +72,7 @@ class AuraAppDataRepository {
         decoder: ModelCodecs.timerFromJson,
       ),
       reminders: await _loadReminders(userId),
-      accounts: await _loadAccounts(userId),
+      accounts: await _loadAccounts(userId, ownerEmail: ownerEmail),
       activities: await _loadRows(
         userId,
         key: 'activities',
@@ -124,10 +127,7 @@ class AuraAppDataRepository {
         table: 'notes',
         values: notes,
         encoder: ModelCodecs.noteToJson,
-        extra: (item, json) => {
-          'title': item.title,
-          'body': item.preview,
-        },
+        extra: (item, json) => {'title': item.title, 'body': item.preview},
       ),
       _saveRows(
         userId,
@@ -261,11 +261,18 @@ class AuraAppDataRepository {
     }
   }
 
-  Future<List<AuraAccount>> _loadAccounts(String userId) async {
-    final local = _storage
-        .getList(userId, 'accounts')
-        .map(ModelCodecs.accountFromJson)
-        .toList();
+  Future<List<AuraAccount>> _loadAccounts(
+    String userId, {
+    required String ownerEmail,
+  }) async {
+    final local = _managedAccounts(
+      _storage
+          .getList(userId, 'accounts')
+          .map(ModelCodecs.accountFromJson)
+          .toList(),
+      userId: userId,
+      ownerEmail: ownerEmail,
+    );
     final supabase = _client;
     if (supabase == null) return local;
 
@@ -275,22 +282,44 @@ class AuraAppDataRepository {
           .select()
           .eq('user_id', userId)
           .order('updated_at', ascending: false);
-      final rows = response
+      final decodedRows = response
           .whereType<Map>()
           .map((row) => row.cast<String, dynamic>())
           .where((row) => (row['group_id'] ?? '').toString().isEmpty)
           .map((row) {
             final payload = row['payload'];
             if (payload is Map) {
-              return {
-                ...row,
-                ...payload.cast<String, dynamic>(),
-              };
+              return {...row, ...payload.cast<String, dynamic>()};
             }
             return row;
           })
           .map(ModelCodecs.accountFromJson)
           .toList();
+      final rows = _managedAccounts(
+        decodedRows,
+        userId: userId,
+        ownerEmail: ownerEmail,
+      );
+      final staleOwnerIds = decodedRows
+          .where(
+            (account) => _isOwnerAccount(
+              account,
+              userId: userId,
+              ownerEmail: ownerEmail,
+            ),
+          )
+          .map((account) => account.id)
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      for (final staleId in staleOwnerIds) {
+        try {
+          await supabase
+              .from('group_members')
+              .delete()
+              .eq('user_id', userId)
+              .eq('id', staleId);
+        } catch (_) {}
+      }
       for (final account in rows) {
         final imagePath = account.imagePath?.trim() ?? '';
         if (imagePath.isEmpty) continue;
@@ -318,15 +347,31 @@ class AuraAppDataRepository {
   }
 
   Future<void> _saveAccounts(String userId, List<AuraAccount> accounts) async {
-    final payload = accounts.map(ModelCodecs.accountToJson).toList();
+    final ownerEmail = accounts
+        .where((account) => account.id == userId)
+        .map((account) => account.email)
+        .firstOrNull;
+    final managed = _managedAccounts(
+      accounts,
+      userId: userId,
+      ownerEmail: ownerEmail ?? '',
+    );
+    final payload = managed.map(ModelCodecs.accountToJson).toList();
     await _storage.saveList(userId, 'accounts', payload);
     final supabase = _client;
     if (supabase == null) return;
 
     try {
-      if (accounts.isEmpty) return;
-      await supabase.from('group_members').upsert(
-            accounts.map((account) {
+      await supabase
+          .from('group_members')
+          .delete()
+          .eq('user_id', userId)
+          .eq('id', userId);
+      if (managed.isEmpty) return;
+      await supabase
+          .from('group_members')
+          .upsert(
+            managed.map((account) {
               final json = ModelCodecs.accountToJson(account);
               return {
                 'id': account.id,
@@ -349,6 +394,46 @@ class AuraAppDataRepository {
             }).toList(),
           );
     } catch (_) {}
+  }
+
+  List<AuraAccount> _managedAccounts(
+    Iterable<AuraAccount> accounts, {
+    required String userId,
+    required String ownerEmail,
+  }) {
+    final result = <AuraAccount>[];
+    final seenIds = <String>{};
+    final seenEmails = <String>{};
+    for (final account in accounts) {
+      if (_isOwnerAccount(account, userId: userId, ownerEmail: ownerEmail)) {
+        continue;
+      }
+      final id = account.id.trim();
+      final email = account.email.trim().toLowerCase();
+      if (id.isEmpty || !seenIds.add(id)) continue;
+      if (email.isNotEmpty && !seenEmails.add(email)) continue;
+      result.add(account);
+    }
+    return result;
+  }
+
+  bool _isOwnerAccount(
+    AuraAccount account, {
+    required String userId,
+    required String ownerEmail,
+  }) {
+    if (account.id.trim() == userId.trim()) return true;
+    final normalizedOwnerEmail = ownerEmail.trim().toLowerCase();
+    final accountEmail = account.email.trim().toLowerCase();
+    if (normalizedOwnerEmail.isEmpty || accountEmail != normalizedOwnerEmail) {
+      return false;
+    }
+    final role = account.role
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('ã', 'a')
+        .replaceAll('â', 'a');
+    return role.contains('propriet');
   }
 
   Future<void> deleteAccount(String userId, String accountId) async {
@@ -383,7 +468,9 @@ class AuraAppDataRepository {
 
     try {
       if (payload.isEmpty) return;
-      await supabase.from(table).upsert(
+      await supabase
+          .from(table)
+          .upsert(
             values.map((item) {
               final json = encoder(item);
               final row = {
@@ -404,7 +491,9 @@ class AuraAppDataRepository {
     }
   }
 
-  Future<Map<DateTime, List<AuraReminder>>> _loadReminders(String userId) async {
+  Future<Map<DateTime, List<AuraReminder>>> _loadReminders(
+    String userId,
+  ) async {
     final localRows = _storage.getList(userId, 'reminders');
     final local = _remindersFromRows(localRows);
     final supabase = _client;
@@ -453,7 +542,9 @@ class AuraAppDataRepository {
 
     try {
       if (rows.isEmpty) return;
-      await supabase.from('reminders').upsert(
+      await supabase
+          .from('reminders')
+          .upsert(
             rows
                 .map(
                   (row) => {
@@ -520,16 +611,16 @@ class AuraAppDataRepository {
     String userId,
     List<AuraSkill> skills,
   ) async {
-    final payload = {
-      for (final skill in skills) skill.id: skill.permission,
-    };
+    final payload = {for (final skill in skills) skill.id: skill.permission};
     await _storage.saveJson(userId, 'skill_permissions', payload);
     final supabase = _client;
     if (supabase == null) return;
 
     try {
       await supabase.from('skills').delete().eq('user_id', userId);
-      await supabase.from('skills').insert(
+      await supabase
+          .from('skills')
+          .insert(
             skills
                 .map(
                   (skill) => {

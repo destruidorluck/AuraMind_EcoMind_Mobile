@@ -2,12 +2,17 @@
 
 Aplicativo Flutter para o ecossistema AuraMind, com integração para autenticação, sincronização com Supabase, backend de IA e recursos de automação.
 
+> Release atual: `1.0.1+2`
+
 ## Visão Geral
 
 O projeto inclui:
 
 - autenticação com Supabase;
 - sincronização de perfil, preferências e dados locais;
+- fotos do proprietário, membros e grupos no Storage do Supabase;
+- migração segura dos dados locais para o UUID autenticado;
+- player de mídia persistente durante a navegação interna;
 - comunicação com backend via HTTPS;
 - integração com dispositivos e automações;
 - interface mobile pensada para uso diário.
@@ -75,7 +80,7 @@ flutter run --device-id=<seu-dispositivo>
 ## Build do APK
 
 ```powershell
-flutter build apk
+flutter build apk --release
 ```
 
 O artefato final será gerado em:
@@ -101,6 +106,29 @@ Esse arquivo define tabelas para:
 - mensagens e sessões;
 - grupos e permissões.
 
+Execute o arquivo no SQL Editor do projeto antes dos testes integrados. O
+proprietário da conta é salvo em `profiles`; somente contas gerenciadas são
+salvas em `group_members`. Essa separação evita proprietários duplicados.
+
+As fotos usam o bucket privado `aura-profile-photos`. O banco mantém
+`avatar_path`, e o app cria URLs assinadas quando carrega o perfil.
+
+## Sessão e Persistência
+
+- o listener do Supabase é a única fonte de login quando o serviço está configurado;
+- eventos transitórios sem sessão não encerram a conta;
+- carregamentos simultâneos da mesma sessão são consolidados;
+- caches antigos são migrados pelo e-mail para o UUID do Supabase;
+- a gravação automática fica suspensa enquanto a conta está sendo hidratada.
+
+## Mídia
+
+Áudios diretos usam o player nativo. Resultados do YouTube usam um player
+persistente mantido no nível raiz do aplicativo, permitindo continuar a música
+ao navegar entre Início, Mensagens, Dispositivos e Mais. A tela Mídia mostra a
+capa e os controles, sem transformar a experiência principal em uma tela de
+vídeo.
+
 ## Testes
 
 ```powershell
@@ -115,10 +143,16 @@ flutter analyze
 
 ## Release Notes
 
-- o app aceita configuração por build-time values;
-- o backend deve estar acessível por HTTPS;
-- a autenticação depende corretamente da URL e da chave Supabase;
-- a build de release já foi validada com APK pronto para uso.
+### 1.0.1+2
+
+- corrigida a duplicação do proprietário após o login;
+- preservados dados criados com o identificador local antigo;
+- corrigida a persistência da foto do perfil principal;
+- proprietário removido da coleção de membros gerenciados;
+- player do YouTube mantido entre as telas;
+- validação do ID de vídeo e recuperação única de `InvalidParam`;
+- 21 testes automatizados aprovados;
+- APK release validado com aproximadamente 64,4 MB.
 
 ## Contribuição
 

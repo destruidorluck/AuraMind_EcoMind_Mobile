@@ -163,7 +163,20 @@ void main() {
           ),
         ],
         reminders: {},
-        accounts: [],
+        accounts: [
+          AuraAccount(
+            id: userId,
+            name: 'Lucas',
+            role: 'Proprietário',
+            email: 'lucas@auramind.app',
+          ),
+          AuraAccount(
+            id: 'member-1',
+            name: 'Leo',
+            role: 'Administrador',
+            email: 'leo@auramind.app',
+          ),
+        ],
         activities: [],
         notifications: [],
         networks: [],
@@ -171,11 +184,15 @@ void main() {
         selectedWorldClockId: 'br-sp',
       );
 
-      final loaded = await repository.load(userId);
+      final loaded = await repository.load(
+        userId,
+        ownerEmail: 'lucas@auramind.app',
+      );
       expect(loaded.lists.single.title, 'Compras');
       expect(loaded.notes.single.preview, 'Texto');
       expect(loaded.alarms.single.time, '08:00');
       expect(loaded.timers.single.totalSeconds, 300);
+      expect(loaded.accounts.single.id, 'member-1');
     },
   );
 
@@ -224,6 +241,99 @@ void main() {
     expect(controller.activeUserId, account.id);
     controller.dispose();
   });
+
+  test('repeated local login keeps a single deterministic owner', () {
+    final controller = AuraController();
+
+    controller.login(email: 'lucas@auramind.app', name: 'Lucas');
+    controller.login(email: 'lucas@auramind.app', name: 'Lucas Tome');
+
+    expect(controller.accounts, hasLength(1));
+    expect(controller.currentAccount!.id, 'local-aura-user');
+    expect(controller.currentAccount!.name, 'Lucas Tome');
+    controller.dispose();
+  });
+
+  test(
+    'authenticated session migrates legacy data and removes duplicate owner',
+    () async {
+      final legacyOwner = AuraAccount(
+        id: 'legacy-owner',
+        name: 'Lucas antigo',
+        role: 'Proprietário',
+        email: 'lucas@auramind.app',
+      );
+      final member = AuraAccount(
+        id: 'member-1',
+        name: 'Leo',
+        role: 'Administrador',
+        email: 'leo@auramind.app',
+      );
+      final legacyList = AuraList(
+        id: 'list-legacy',
+        title: 'Dados preservados',
+        items: [],
+      );
+      final canonicalOwner = AuraAccount(
+        id: '00000000-0000-0000-0000-000000000001',
+        name: 'Lucas',
+        role: 'Proprietário',
+        email: 'lucas@auramind.app',
+      );
+      SharedPreferences.setMockInitialValues({
+        'user:legacy-owner:accounts': jsonEncode([
+          ModelCodecs.accountToJson(legacyOwner),
+          ModelCodecs.accountToJson(member),
+        ]),
+        'user:legacy-owner:lists': jsonEncode([
+          ModelCodecs.listToJson(legacyList),
+        ]),
+        'user:00000000-0000-0000-0000-000000000001:accounts': jsonEncode([
+          ModelCodecs.accountToJson(canonicalOwner),
+        ]),
+        'user:00000000-0000-0000-0000-000000000001:lists': '[]',
+      });
+      final api = ApiClient(
+        baseUrl: 'https://example.test',
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({'ok': true}),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+      final controller = AuraController(apiClient: api);
+
+      await controller.onAuthenticatedSession(
+        userId: '00000000-0000-0000-0000-000000000001',
+        email: 'lucas@auramind.app',
+        name: 'Lucas Tome',
+      );
+      await controller.onAuthenticatedSession(
+        userId: '00000000-0000-0000-0000-000000000001',
+        email: 'lucas@auramind.app',
+        name: 'Lucas Tome',
+      );
+
+      expect(
+        controller.accounts.where(
+          (account) => account.role.toLowerCase().contains('propriet'),
+        ),
+        hasLength(1),
+      );
+      expect(
+        controller.currentAccount!.id,
+        '00000000-0000-0000-0000-000000000001',
+      );
+      expect(
+        controller.accounts.any((account) => account.id == 'member-1'),
+        isTrue,
+      );
+      expect(controller.lists.single.title, 'Dados preservados');
+      controller.dispose();
+    },
+  );
 
   testWidgets('home jazz shortcut sends a real Aura chat message', (
     tester,
@@ -549,6 +659,7 @@ void main() {
             theme: auraDarkTheme,
             home: AuraPersistentMediaPlayer(
               controller: controller,
+              enableYoutubePlayer: false,
               child: Scaffold(body: AuraRouteView(route: route)),
             ),
           ),

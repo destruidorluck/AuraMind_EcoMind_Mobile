@@ -21,6 +21,7 @@ import '../features/music/music_repository.dart';
 import '../features/settings/settings_repository.dart';
 import '../features/user/user_repository.dart';
 import '../models/aura_models.dart';
+import '../services/aura_auth_service.dart';
 import '../services/aura_ble_service.dart';
 import '../services/aura_music_player_service.dart';
 import '../services/aura_notification_service.dart';
@@ -83,6 +84,10 @@ class AuraController extends ChangeNotifier {
   StreamSubscription<String>? _bleLogSubscription;
   StreamSubscription<AuraMusicPlayerSnapshot>? _musicPlayerSubscription;
   Timer? _persistDebounce;
+  Future<void>? _sessionLoad;
+  String _sessionLoadUserId = '';
+  bool _isHydratingUserState = false;
+  int _sessionRevision = 0;
   String _activeUserId = '';
   String _audioStatus = 'idle';
   XFile? _capturedAudio;
@@ -476,19 +481,11 @@ class AuraController extends ChangeNotifier {
       return;
     }
 
-    _activeUserId = user.id;
-    await _loadProfileAndSession(user.id, user.email ?? '', '');
-
-    _setInit(AppInitStage.checkingBackend, 'Checando backend...');
-    final backendOk = await _checkBackendHealth();
-    if (!backendOk) {
-      appInitError =
-          'Backend indisponivel: voz, IA e musica podem ficar limitadas.';
-    }
-
-    await _loadSettingsDevicesContacts();
-    _setInit(AppInitStage.ready, 'Pronto');
-    _appInitialized = true;
+    await onAuthenticatedSession(
+      userId: user.id,
+      email: user.email ?? '',
+      name: AuraAuthService.displayNameFromUser(user),
+    );
   }
 
   Future<void> _ensureDependencies() async {
@@ -534,21 +531,42 @@ class AuraController extends ChangeNotifier {
     required List<AuraAccount> loaded,
     required String userId,
   }) {
-    final byId = <String, AuraAccount>{};
-    for (final account in loaded) {
-      if (account.id.trim().isEmpty) continue;
-      byId[account.id] = account;
-    }
+    final result = <AuraAccount>[];
+    final seenIds = <String>{};
+    final seenEmails = <String>{};
+    final ownerEmail = owner?.email.trim().toLowerCase() ?? '';
     if (owner != null) {
-      byId[owner.id] = owner;
+      result.add(owner);
+      seenIds.add(owner.id.trim());
+      if (ownerEmail.isNotEmpty) seenEmails.add(ownerEmail);
     }
-    final result = byId.values.toList();
-    result.sort((a, b) {
-      if (a.id == userId) return -1;
-      if (b.id == userId) return 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    return result;
+    for (final account in loaded) {
+      final id = account.id.trim();
+      final email = account.email.trim().toLowerCase();
+      if (id.isEmpty || id == userId || !seenIds.add(id)) continue;
+      if (ownerEmail.isNotEmpty &&
+          email == ownerEmail &&
+          _isOwnerRole(account.role)) {
+        continue;
+      }
+      if (email.isNotEmpty && !seenEmails.add(email)) continue;
+      result.add(account);
+    }
+    final managed = result.skip(owner == null ? 0 : 1).toList()
+      ..sort((a, b) {
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    return [?owner, ...managed];
+  }
+
+  bool _isOwnerRole(String role) {
+    final normalized = role
+        .trim()
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('ã', 'a')
+        .replaceAll('â', 'a');
+    return normalized.contains('propriet');
   }
 
   String _conversationKey({String contactId = '', String groupId = ''}) {
@@ -638,53 +656,50 @@ class AuraController extends ChangeNotifier {
         .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
         .join(' ');
 
-    if (accounts.isEmpty) {
-      accounts.add(
-        AuraAccount(
-          id: userId,
-          name: titleCaseName,
-          role: 'Proprietario',
-          imageAsset: profile?.avatarUrl.trim().isEmpty == true
-              ? null
-              : profile?.avatarUrl,
-          imagePath: profile?.avatarPath.trim().isEmpty == true
-              ? null
-              : profile?.avatarPath,
-          email: email,
-          canManageDevices: true,
-          canManageMembers: true,
-          canUseVoice: true,
-          canUseMedia: true,
-          canViewHistory: true,
-          joinedAt: DateTime.now(),
-          lastLogin: DateTime.now(),
-        ),
-      );
-    } else {
-      final current = accounts.first;
-      accounts[0] = AuraAccount(
-        id: userId,
-        name: titleCaseName,
-        role: current.role,
-        imageAsset: profile?.avatarUrl.trim().isNotEmpty == true
-            ? profile!.avatarUrl
-            : current.imageAsset,
-        imagePath: profile?.avatarPath.trim().isNotEmpty == true
-            ? profile!.avatarPath
-            : current.imagePath,
-        email: email,
-        notificationsEnabled: current.notificationsEnabled,
-        canManageDevices: current.canManageDevices,
-        canManageMembers: current.canManageMembers,
-        canUseVoice: current.canUseVoice,
-        canUseMedia: current.canUseMedia,
-        canViewHistory: current.canViewHistory,
-        phone: current.phone,
-        joinedAt: current.joinedAt,
-        lastLogin: DateTime.now(),
-        privacy: current.privacy,
-      );
-    }
+    final normalizedEmail =
+        (profile?.email.trim().isNotEmpty == true ? profile!.email : email)
+            .trim();
+    final existingOwner =
+        accounts.where((account) => account.id == userId).firstOrNull ??
+        accounts
+            .where(
+              (account) =>
+                  normalizedEmail.isNotEmpty &&
+                  account.email.trim().toLowerCase() ==
+                      normalizedEmail.toLowerCase() &&
+                  _isOwnerRole(account.role),
+            )
+            .firstOrNull;
+    final owner = AuraAccount(
+      id: userId,
+      name: titleCaseName,
+      role: 'Proprietário',
+      imageAsset: profile?.avatarUrl.trim().isNotEmpty == true
+          ? profile!.avatarUrl
+          : existingOwner?.imageAsset,
+      imagePath: profile?.avatarPath.trim().isNotEmpty == true
+          ? profile!.avatarPath
+          : existingOwner?.imagePath,
+      email: normalizedEmail,
+      notificationsEnabled: existingOwner?.notificationsEnabled ?? true,
+      canManageDevices: existingOwner?.canManageDevices ?? true,
+      canManageMembers: existingOwner?.canManageMembers ?? true,
+      canUseVoice: existingOwner?.canUseVoice ?? true,
+      canUseMedia: existingOwner?.canUseMedia ?? true,
+      canViewHistory: existingOwner?.canViewHistory ?? true,
+      phone: existingOwner?.phone ?? '',
+      joinedAt: existingOwner?.joinedAt ?? DateTime.now(),
+      lastLogin: DateTime.now(),
+      privacy: existingOwner?.privacy,
+    );
+    final sortedAccounts = _ownerFirstAccounts(
+      owner: owner,
+      loaded: accounts,
+      userId: userId,
+    );
+    accounts
+      ..clear()
+      ..addAll(sortedAccounts);
     await _groupsRepository?.acceptPendingInvites(
       userId: userId,
       email: email,
@@ -770,7 +785,10 @@ class AuraController extends ChangeNotifier {
       selectedContactId = contacts.first.id;
     }
 
-    final appData = await _appDataRepository!.load(userId);
+    final appData = await _appDataRepository!.load(
+      userId,
+      ownerEmail: currentAccount?.email ?? '',
+    );
     lists
       ..clear()
       ..addAll(appData.lists);
@@ -804,19 +822,17 @@ class AuraController extends ChangeNotifier {
         ..addAll(appData.networks.where((item) => item.type == 'Zigbee'));
     }
 
-    if (appData.accounts.isNotEmpty) {
-      final owner =
-          accounts.where((item) => item.id == userId).firstOrNull ??
-          accounts.firstOrNull;
-      final sortedAccounts = _ownerFirstAccounts(
-        owner: owner,
-        loaded: appData.accounts,
-        userId: userId,
-      );
-      accounts
-        ..clear()
-        ..addAll(sortedAccounts);
-    }
+    final owner =
+        accounts.where((item) => item.id == userId).firstOrNull ??
+        accounts.firstOrNull;
+    final sortedAccounts = _ownerFirstAccounts(
+      owner: owner,
+      loaded: appData.accounts,
+      userId: userId,
+    );
+    accounts
+      ..clear()
+      ..addAll(sortedAccounts);
 
     for (final skill in skills) {
       final permission = appData.skillPermissions[skill.id];
@@ -931,13 +947,88 @@ class AuraController extends ChangeNotifier {
     required String email,
     required String name,
   }) async {
-    await _ensureDependencies();
-    _activeUserId = userId;
-    await _loadProfileAndSession(userId, email, name);
-    await _loadSettingsDevicesContacts();
-    _setInit(AppInitStage.ready, 'Pronto');
-    _appInitialized = true;
-    notifyListeners();
+    if (userId.trim().isEmpty) return;
+    if (_activeUserId == userId &&
+        isLoggedIn &&
+        appInitStage == AppInitStage.ready &&
+        !_isHydratingUserState) {
+      return;
+    }
+    final currentLoad = _sessionLoad;
+    if (currentLoad != null && _sessionLoadUserId == userId) {
+      await currentLoad;
+      return;
+    }
+
+    final revision = ++_sessionRevision;
+    final load = _hydrateAuthenticatedSession(
+      userId: userId,
+      email: email,
+      name: name,
+      revision: revision,
+    );
+    _sessionLoad = load;
+    _sessionLoadUserId = userId;
+    try {
+      await load;
+    } finally {
+      if (identical(_sessionLoad, load)) {
+        _sessionLoad = null;
+        _sessionLoadUserId = '';
+      }
+    }
+  }
+
+  Future<void> _hydrateAuthenticatedSession({
+    required String userId,
+    required String email,
+    required String name,
+    required int revision,
+  }) async {
+    _isHydratingUserState = true;
+    try {
+      await _ensureDependencies();
+      if (revision != _sessionRevision) return;
+      await _localStorage!.migrateLegacyUserData(
+        newUserId: userId,
+        email: email,
+      );
+      if (revision != _sessionRevision) return;
+      if (_activeUserId.isNotEmpty && _activeUserId != userId) {
+        _clearUserScopedState();
+      }
+      _activeUserId = userId;
+      appInitError = null;
+      await _loadProfileAndSession(userId, email, name);
+      if (revision != _sessionRevision) return;
+
+      _setInit(AppInitStage.checkingBackend, 'Checando backend...');
+      final backendOk = await _checkBackendHealth();
+      if (revision != _sessionRevision) return;
+      if (!backendOk) {
+        appInitError =
+            'Backend indisponivel: voz, IA e musica podem ficar limitadas.';
+      }
+
+      await _loadSettingsDevicesContacts();
+      if (revision != _sessionRevision) return;
+      _setInit(AppInitStage.ready, 'Pronto');
+      _appInitialized = true;
+      isLoggedIn = true;
+    } catch (error) {
+      if (revision != _sessionRevision) return;
+      appInitError = 'Nao foi possivel carregar todos os dados da conta.';
+      _setInit(
+        AppInitStage.error,
+        'Falha ao carregar a conta',
+        error: '$error',
+      );
+    } finally {
+      if (revision == _sessionRevision) {
+        _isHydratingUserState = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> bootstrapNativeState() async {
@@ -978,29 +1069,47 @@ class AuraController extends ChangeNotifier {
         .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
         .join(' ');
 
-    if (accounts.isEmpty) {
-      accounts.add(
-        AuraAccount(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: displayName.isEmpty ? 'Nova conta' : displayName,
-          role: 'Proprietário',
-          email: trimmedEmail,
-          canManageDevices: true,
-          canManageMembers: true,
-          canUseVoice: true,
-          canUseMedia: true,
-          canViewHistory: true,
-          joinedAt: DateTime.now(),
-          lastLogin: DateTime.now(),
-        ),
-      );
-    } else {
-      accounts.first
-        ..name = displayName.isEmpty ? accounts.first.name : displayName
-        ..email = trimmedEmail.isEmpty ? accounts.first.email : trimmedEmail
-        ..lastLogin = DateTime.now();
-    }
-    _activeUserId = accounts.first.id;
+    final existingOwner =
+        accounts
+            .where((account) => account.id == _localAuraUserId)
+            .firstOrNull ??
+        accounts
+            .where(
+              (account) =>
+                  trimmedEmail.isNotEmpty &&
+                  account.email.trim().toLowerCase() == trimmedEmail &&
+                  _isOwnerRole(account.role),
+            )
+            .firstOrNull;
+    final owner = AuraAccount(
+      id: _localAuraUserId,
+      name: displayName.isEmpty
+          ? (existingOwner?.name ?? 'Nova conta')
+          : displayName,
+      role: 'Proprietário',
+      imageAsset: existingOwner?.imageAsset,
+      imagePath: existingOwner?.imagePath,
+      email: trimmedEmail.isEmpty ? (existingOwner?.email ?? '') : trimmedEmail,
+      notificationsEnabled: existingOwner?.notificationsEnabled ?? true,
+      canManageDevices: existingOwner?.canManageDevices ?? true,
+      canManageMembers: existingOwner?.canManageMembers ?? true,
+      canUseVoice: existingOwner?.canUseVoice ?? true,
+      canUseMedia: existingOwner?.canUseMedia ?? true,
+      canViewHistory: existingOwner?.canViewHistory ?? true,
+      phone: existingOwner?.phone ?? '',
+      joinedAt: existingOwner?.joinedAt ?? DateTime.now(),
+      lastLogin: DateTime.now(),
+      privacy: existingOwner?.privacy,
+    );
+    final sortedAccounts = _ownerFirstAccounts(
+      owner: owner,
+      loaded: accounts,
+      userId: _localAuraUserId,
+    );
+    accounts
+      ..clear()
+      ..addAll(sortedAccounts);
+    _activeUserId = _localAuraUserId;
     isLoggedIn = true;
     route = AuraRoute.home;
     notifyListeners();
@@ -1008,25 +1117,64 @@ class AuraController extends ChangeNotifier {
 
   void logout({bool remote = true}) {
     if (remote) {
-      _authRepository.signOut();
+      unawaited(_authRepository.signOut());
     }
+    _sessionRevision++;
+    _sessionLoad = null;
+    _sessionLoadUserId = '';
+    _isHydratingUserState = false;
+    _persistDebounce?.cancel();
     isLoggedIn = false;
     _activeUserId = '';
+    _clearUserScopedState();
+    route = AuraRoute.home;
+    _setInit(AppInitStage.ready, 'Pronto');
+    _appInitialized = true;
+    notifyListeners();
+  }
+
+  void _clearUserScopedState() {
     contacts.clear();
     devices.clear();
     accounts.clear();
     groups.clear();
     callSessions.clear();
+    lists.clear();
+    notes.clear();
+    alarms.clear();
+    timers.clear();
+    reminders.clear();
+    notifications.clear();
+    recentActivities.clear();
+    recentlyPlayed.clear();
+    wifiNetworks.clear();
+    bluetoothDevices.clear();
+    zigbeeHubs.clear();
     _messageCache.clear();
     activeCallSession = null;
+    selectedDeviceId = '';
+    selectedContactId = '';
+    selectedGroupId = '';
+    selectedAccountId = '';
+    selectedListId = '';
+    selectedNoteId = '';
+    selectedAlarmId = '';
+    selectedReminder = null;
+    selectedReminderDate = null;
+    ringingAlarm = null;
+    ringingTimer = null;
+    userPrivacy = null;
+    currentMedia = AuraMedia(
+      title: 'Nenhuma mídia tocando',
+      artist: 'Conecte Spotify, YouTube Music ou Apple Music',
+      imageUrl: '',
+      isPlaying: false,
+    );
+    musicErrorMessage = '';
     lastVoiceTranscript = '';
     lastAuraReply = '';
     _auraLightResetTimer?.cancel();
     _auraLightState = AuraLightState.idle;
-    route = AuraRoute.home;
-    _setInit(AppInitStage.ready, 'Pronto');
-    _appInitialized = true;
-    notifyListeners();
   }
 
   void go(AuraRoute nextRoute) {
@@ -1627,10 +1775,7 @@ class AuraController extends ChangeNotifier {
         group.imagePath = upload?.path;
       }
     }
-    await _groupsRepository?.updateGroup(
-      userId: _storageUserId,
-      group: group,
-    );
+    await _groupsRepository?.updateGroup(userId: _storageUserId, group: group);
     notifyListeners();
   }
 
@@ -1654,10 +1799,7 @@ class AuraController extends ChangeNotifier {
     final group = selectedGroup;
     if (group == null || group.ownerId != _storageUserId) return;
     group.memberIds.removeWhere((id) => id == memberId);
-    await _groupsRepository?.updateGroup(
-      userId: _storageUserId,
-      group: group,
-    );
+    await _groupsRepository?.updateGroup(userId: _storageUserId, group: group);
     notifyListeners();
   }
 
@@ -2973,19 +3115,30 @@ class AuraController extends ChangeNotifier {
             file: image,
           );
     account.imageAsset = uploaded?.url ?? image.path;
-    account.imagePath = uploaded?.path;
-    if (id == _activeUserId) {
-      unawaited(
-        _userRepository.saveProfile(
-          userId: id,
-          name: account.name,
-          email: account.email,
-          avatarUrl: account.imageAsset,
-          avatarPath: account.imagePath,
-        ),
-      );
+    if (uploaded?.path.trim().isNotEmpty == true) {
+      account.imagePath = uploaded!.path;
     }
-    unawaited(_persistUserState());
+    if (id == _activeUserId) {
+      final uploadedToCloud = uploaded?.path.trim().isNotEmpty == true;
+      final saved = uploadedToCloud
+          ? await _userRepository.saveProfile(
+              userId: id,
+              name: account.name,
+              email: account.email,
+              avatarUrl: account.imageAsset,
+              avatarPath: account.imagePath,
+            )
+          : _authRepository.currentUser == null;
+      if (!saved) {
+        addNotification(
+          title: 'Foto salva neste aparelho',
+          body:
+              'A sincronizacao da foto com a conta ficou pendente. Tente novamente com internet.',
+          origin: 'Perfil',
+        );
+      }
+    }
+    await _persistUserState();
     notifyListeners();
   }
 
@@ -3925,7 +4078,12 @@ class AuraController extends ChangeNotifier {
   @override
   void notifyListeners() {
     super.notifyListeners();
-    if (_activeUserId.isEmpty || appInitStage != AppInitStage.ready) return;
+    if (_activeUserId.isEmpty ||
+        !isLoggedIn ||
+        _isHydratingUserState ||
+        appInitStage != AppInitStage.ready) {
+      return;
+    }
     _persistDebounce?.cancel();
     _persistDebounce = Timer(const Duration(milliseconds: 450), () {
       _persistUserState();
@@ -3934,8 +4092,11 @@ class AuraController extends ChangeNotifier {
 
   Future<void> _persistUserState() async {
     final userId = _activeUserId;
-    if (userId.isEmpty) return;
+    if (userId.isEmpty || !isLoggedIn || _isHydratingUserState) return;
     await _ensureDependencies();
+    if (userId != _activeUserId || !isLoggedIn || _isHydratingUserState) {
+      return;
+    }
     await _settingsRepository?.save(
       userId,
       UserSettingsData(

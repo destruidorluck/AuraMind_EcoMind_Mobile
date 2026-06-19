@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/Dart-Language-111827?style=for-the-badge&logo=dart&logoColor=00D9FF" alt="Dart" />
   <img src="https://img.shields.io/badge/Supabase-Auth%20%26%20Data-062B2B?style=for-the-badge&logo=supabase&logoColor=3ECF8E" alt="Supabase" />
   <img src="https://img.shields.io/badge/API-Backend-4B0082?style=for-the-badge&logo=fastapi&logoColor=white" alt="Backend API" />
+  <img src="https://img.shields.io/badge/Release-1.0.1%2B2-7C3AED?style=for-the-badge" alt="Release 1.0.1+2" />
 </p>
 
 > AuraMind combina voz, texto, automação e feedback contextual para reduzir fricção cognitiva e deixar a rotina mais fluida.
@@ -24,6 +25,9 @@ Este repositório é focado exclusivamente no aplicativo mobile Flutter do proje
 
 - interface mobile com experiência multimodal;
 - autenticação e sincronização com Supabase;
+- perfis principal e gerenciados com fotos persistidas;
+- grupos, rotinas, dispositivos e EcoMind;
+- reprodução de mídia persistente entre as telas do app;
 - integração com backend via HTTPS;
 - build pronta para APK de release.
 
@@ -37,9 +41,12 @@ Este repositório é focado exclusivamente no aplicativo mobile Flutter do proje
 
 ```text
 flutter_app/
-├── lib/               # código principal do app
-├── assets/            # imagens, sons e recursos
-├── supabase/          # schema SQL de apoio
+├── lib/core/          # configuração, rede, tema e armazenamento
+├── lib/features/      # repositórios e regras de dados
+├── lib/screens/       # telas e navegação
+├── lib/services/      # integrações nativas, Supabase e EcoMind
+├── lib/state/         # estado global e sincronização
+├── supabase/          # schema SQL e políticas
 └── test/              # testes automatizados
 ```
 
@@ -67,7 +74,7 @@ flutter run `
 ### 3. Build do APK
 
 ```powershell
-flutter build apk
+flutter build apk --release
 ```
 
 O artefato final será gerado em:
@@ -82,6 +89,21 @@ A versão final do app já foi preparada para trabalhar com valores embutidos na
 
 - [flutter_app/README.md](flutter_app/README.md) — instruções detalhadas do app;
 - [guidelines/Guidelines.md](guidelines/Guidelines.md) — referências técnicas e fluxo de desenvolvimento.
+- [CHANGELOG.md](CHANGELOG.md) — histórico das versões.
+
+## Estado da Release
+
+Versão atual: `1.0.1+2`.
+
+- `flutter analyze --no-pub`: aprovado sem apontamentos;
+- `flutter test --no-pub`: 21 testes aprovados;
+- `flutter build apk --release --no-pub`: aprovado;
+- APK: `flutter_app/build/app/outputs/flutter-apk/app-release.apk`;
+- tamanho do artefato: aproximadamente 64,4 MB.
+
+A validação manual deve ser feita em um aparelho Android com as credenciais do
+ambiente de destino, especialmente para login, upload de fotos, Bluetooth e
+reprodução do YouTube.
 
 ## Observação Importante
 

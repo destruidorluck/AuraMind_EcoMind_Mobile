@@ -72,30 +72,22 @@ class _AuraMindAppState extends State<AuraMindApp> {
     final client = AuraAuthService.client;
     if (client == null) return;
 
-    final currentUser = client.auth.currentUser;
-    if (currentUser != null) {
-      _controller.onAuthenticatedSession(
-        userId: currentUser.id,
-        email: currentUser.email ?? '',
-        name: AuraAuthService.displayNameFromUser(currentUser),
-      );
-    }
-
-    _authSubscription = client.auth.onAuthStateChange.listen(
-      (state) {
-        final user = state.session?.user;
-        if (user == null) {
+    _authSubscription = client.auth.onAuthStateChange.listen((state) {
+      final user = state.session?.user;
+      if (user == null) {
+        if (state.event == AuthChangeEvent.signedOut) {
           _controller.logout(remote: false);
-          return;
         }
+        return;
+      }
+      unawaited(
         _controller.onAuthenticatedSession(
           userId: user.id,
           email: user.email ?? '',
           name: AuraAuthService.displayNameFromUser(user),
-        );
-      },
-      onError: (Object error, StackTrace stackTrace) {},
-    );
+        ),
+      );
+    }, onError: (Object error, StackTrace stackTrace) {});
   }
 
   @override

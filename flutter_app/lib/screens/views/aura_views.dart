@@ -1296,8 +1296,13 @@ class _ChatViewState extends State<ChatView> {
             backgroundColor: group == null
                 ? AuraColors.cyan500
                 : AuraColors.purple500,
-            backgroundImage: _imageProvider(group?.imageAsset ?? contact?.imageAsset),
-            child: (group?.imageAsset ?? contact?.imageAsset ?? '').trim().isNotEmpty
+            backgroundImage: _imageProvider(
+              group?.imageAsset ?? contact?.imageAsset,
+            ),
+            child:
+                (group?.imageAsset ?? contact?.imageAsset ?? '')
+                    .trim()
+                    .isNotEmpty
                 ? null
                 : Text(
                     (group?.name ?? contact?.name ?? app.chatContact)
@@ -2149,13 +2154,10 @@ class _MediaViewState extends State<MediaView> {
                 ),
                 const SizedBox(height: 16),
               ],
-              if (media.videoId.trim().isNotEmpty)
-                const AuraYoutubePlayerSurface()
-              else
-                _NowPlayingArtwork(
-                  imageUrl: media.imageUrl,
-                  playing: media.isPlaying,
-                ),
+              _NowPlayingArtwork(
+                imageUrl: media.imageUrl,
+                playing: media.isPlaying,
+              ),
               const SizedBox(height: 22),
               Text(
                 media.title,
@@ -2287,35 +2289,35 @@ class _MediaViewState extends State<MediaView> {
           )
         else
           SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              AuraMediaCard(
-                imageUrl:
-                    'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop',
-                title: 'Eletrônica Mix',
-                subtitle: 'Playlist',
-                onTap: () => app.playMusicFromPrompt('Tocar eletronica mix'),
-              ),
-              const SizedBox(width: 14),
-              AuraMediaCard(
-                imageUrl:
-                    'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop',
-                title: 'Daily Podcast',
-                subtitle: 'Ep. 42',
-                onTap: () => app.playMusicFromPrompt('Tocar podcast diario'),
-              ),
-              const SizedBox(width: 14),
-              AuraMediaCard(
-                imageUrl:
-                    'https://images.unsplash.com/photo-1493225457124-a1a2a5f5f924?w=300&h=300&fit=crop',
-                title: 'Jazz Focus',
-                subtitle: 'Álbum',
-                onTap: () => app.playMusicFromPrompt('Tocar jazz focus'),
-              ),
-            ],
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                AuraMediaCard(
+                  imageUrl:
+                      'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop',
+                  title: 'Eletrônica Mix',
+                  subtitle: 'Playlist',
+                  onTap: () => app.playMusicFromPrompt('Tocar eletronica mix'),
+                ),
+                const SizedBox(width: 14),
+                AuraMediaCard(
+                  imageUrl:
+                      'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop',
+                  title: 'Daily Podcast',
+                  subtitle: 'Ep. 42',
+                  onTap: () => app.playMusicFromPrompt('Tocar podcast diario'),
+                ),
+                const SizedBox(width: 14),
+                AuraMediaCard(
+                  imageUrl:
+                      'https://images.unsplash.com/photo-1493225457124-a1a2a5f5f924?w=300&h=300&fit=crop',
+                  title: 'Jazz Focus',
+                  subtitle: 'Álbum',
+                  onTap: () => app.playMusicFromPrompt('Tocar jazz focus'),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -5109,8 +5111,7 @@ class DeviceConfigUpgradedView extends StatelessWidget {
                 onChanged: (_) => app.toggleDevice(device.id),
               ),
               const SizedBox(height: 16),
-              if (isEcoMind)
-                _EcoMindDeviceSettings(app: app, device: device),
+              if (isEcoMind) _EcoMindDeviceSettings(app: app, device: device),
               if (!isEcoMind && device.type == AuraDeviceType.light)
                 _DeviceLightSettings(app: app, device: device),
               if (!isEcoMind && device.type == AuraDeviceType.tv)
@@ -5124,11 +5125,11 @@ class DeviceConfigUpgradedView extends StatelessWidget {
                 ),
               if (!isEcoMind &&
                   !{
-                AuraDeviceType.light,
-                AuraDeviceType.tv,
-                AuraDeviceType.ac,
-                AuraDeviceType.speaker,
-              }.contains(device.type))
+                    AuraDeviceType.light,
+                    AuraDeviceType.tv,
+                    AuraDeviceType.ac,
+                    AuraDeviceType.speaker,
+                  }.contains(device.type))
                 _GenericDeviceSettings(app: app, device: device),
             ],
           ),
@@ -5464,9 +5465,7 @@ class _EcoMindDeviceSettingsState extends State<_EcoMindDeviceSettings> {
   Future<void> _send(Map<String, Object?> command) async {
     final result = await widget.app.sendEsp32Command(command);
     if (!mounted || result == 'sent') return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
   }
 
   Future<void> _openWifiDialog() async {
@@ -5541,10 +5540,11 @@ class _EcoMindDeviceSettingsState extends State<_EcoMindDeviceSettings> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: (app.esp32BleConnected
-                              ? AuraColors.cyan500
-                              : AuraColors.zinc700)
-                          .withValues(alpha: 0.16),
+                      color:
+                          (app.esp32BleConnected
+                                  ? AuraColors.cyan500
+                                  : AuraColors.zinc700)
+                              .withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(AuraRadii.lg),
                     ),
                     child: Icon(
@@ -5628,9 +5628,7 @@ class _EcoMindDeviceSettingsState extends State<_EcoMindDeviceSettings> {
                   onTap: canSend
                       ? () {
                           setState(() => selectedColor = option.$1);
-                          unawaited(
-                            _send({'cmd': 'led', 'color': option.$1}),
-                          );
+                          unawaited(_send({'cmd': 'led', 'color': option.$1}));
                         }
                       : null,
                   borderRadius: BorderRadius.circular(AuraRadii.full),
@@ -5686,9 +5684,7 @@ class _EcoMindDeviceSettingsState extends State<_EcoMindDeviceSettings> {
           onChanged: (value) {
             widget.app.updateDeviceValue(device.id, value.round());
             if (canSend) {
-              unawaited(
-                _send({'cmd': 'brightness', 'value': value.round()}),
-              );
+              unawaited(_send({'cmd': 'brightness', 'value': value.round()}));
             }
           },
         ),
@@ -6691,9 +6687,9 @@ class _BluetoothSettingsViewState extends State<BluetoothSettingsView> {
                     icon: Icons.tips_and_updates_rounded,
                     onPressed: canSend
                         ? () => _send(context, app, {
-                              'cmd': 'led',
-                              'color': 'roxo',
-                            })
+                            'cmd': 'led',
+                            'color': 'roxo',
+                          })
                         : null,
                   ),
                 ],
@@ -7290,7 +7286,11 @@ class _AccountSettingsViewState extends State<AccountSettingsView> {
         const SizedBox(height: 18),
         AuraTextField(label: 'Nome', hint: 'Nome do perfil', controller: name),
         const SizedBox(height: 12),
-        AuraTextField(label: 'E-mail', hint: 'email@exemplo.com', controller: email),
+        AuraTextField(
+          label: 'E-mail',
+          hint: 'email@exemplo.com',
+          controller: email,
+        ),
         const SizedBox(height: 14),
         if (!isOwner)
           Wrap(
@@ -7310,8 +7310,7 @@ class _AccountSettingsViewState extends State<AccountSettingsView> {
           icon: Icons.notifications_rounded,
           title: 'Notificações',
           value: notificationsEnabled,
-          onChanged: (value) =>
-              setState(() => notificationsEnabled = value),
+          onChanged: (value) => setState(() => notificationsEnabled = value),
         ),
         const SizedBox(height: 10),
         _FullWidthToggleTile(
